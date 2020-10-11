@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/cameraMainLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <androidx.camera.view.PreviewView
+            android:id="@+id/cameraPreview"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.0"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.0">
+
+        </androidx.camera.view.PreviewView>
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/imageCapture"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/outer_circle"
+            android:tint="@color/material_white"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:srcCompat="@drawable/ic_action_camera" />
+
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/photo_view"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/outer_circle"
+            android:padding="@dimen/spacing_small"
+            app:layout_constraintBottom_toBottomOf="@+id/imageCapture"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/imageCapture"
+            app:srcCompat="@drawable/ic_action_photo" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/flash_view"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/outer_circle"
+            android:padding="@dimen/spacing_small"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:srcCompat="@drawable/ic_action_flash_off" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/switch_camera_view"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/outer_circle"
+            android:padding="@dimen/spacing_small"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/flash_view"
+            app:srcCompat="@drawable/ic_action_camers_switch" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/portrait_view"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/outer_circle"
+            android:padding="@dimen/spacing_small"
+            app:layout_constraintStart_toStartOf="@+id/switch_camera_view"
+            app:layout_constraintTop_toBottomOf="@+id/switch_camera_view"
+            app:srcCompat="@drawable/ic_portrait" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/hdri_view"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/outer_circle"
+            android:padding="@dimen/spacing_small"
+            app:layout_constraintStart_toStartOf="@+id/switch_camera_view"
+            app:layout_constraintTop_toBottomOf="@+id/portrait_view"
+            app:srcCompat="@drawable/ic_hdr_off" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/night_view"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/outer_circle"
+            android:padding="@dimen/spacing_small"
+            app:layout_constraintStart_toStartOf="@+id/switch_camera_view"
+            app:layout_constraintTop_toBottomOf="@+id/hdri_view"
+            app:srcCompat="@drawable/ic_night" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+
+</layout>
