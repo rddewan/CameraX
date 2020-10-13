@@ -37,6 +37,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toFile
 import androidx.databinding.DataBindingUtil
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.afollestad.materialdialogs.MaterialDialog
 import com.bumptech.glide.Glide
@@ -88,6 +89,7 @@ class CameraFragment : Fragment() {
     }
 
     private lateinit var binding: FragmentCameraBinding
+
     ///Blocking camera operations are performed using this executor
     private lateinit var mCameraExecutor: ExecutorService
     private lateinit var viewFinder: PreviewView
@@ -101,7 +103,8 @@ class CameraFragment : Fragment() {
     private lateinit var mCameraSelector: CameraSelector
 
     private var displayId: Int = -1
-    private var lensFacing: Int = CameraSelector.LENS_FACING_BACK
+
+    //private var lensFacing: Int = CameraSelector.LENS_FACING_BACK
     private var mFlashMode = ImageCapture.FLASH_MODE_OFF
 
     private lateinit var mImageCaptureBuilder: ImageCapture.Builder
@@ -125,10 +128,10 @@ class CameraFragment : Fragment() {
     private var mLongitude: Double = 0.0
     private var mLocationTime: Long = 0L
 
+    private lateinit var viewModel: CameraViewModel
     private val displayManager by lazy {
         requireContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     }
-
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -136,11 +139,17 @@ class CameraFragment : Fragment() {
     ): View? {
         // Inflate the layout for this fragment
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_camera, container, false)
+        //Initialize the ViewModel
+        viewModel = ViewModelProvider(this).get(CameraViewModel::class.java)
+        //observer live data
+        observers()
+
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
         // Initialize our background executor
         mCameraExecutor = Executors.newSingleThreadExecutor()
         // Every time the orientation of device changes, update rotation for use cases
@@ -162,6 +171,16 @@ class CameraFragment : Fragment() {
         //location request
         setupLocationRequest()
 
+    }
+
+    private fun observers() {
+        viewModel.isLoading.observe(viewLifecycleOwner, {
+            binding.pbLoading.visibility = if (it) View.VISIBLE else View.GONE
+        })
+
+        viewModel.lensFacing.observe(viewLifecycleOwner, {
+            Log.d(TAG, " LensFacing: $it")
+        })
     }
 
     private fun setUpCamera() {
@@ -207,11 +226,18 @@ class CameraFragment : Fragment() {
              */
             mProcessCameraProvider = mCameraProviderFuture.get()
 
-            // Select lensFacing depending on the available cameras
-            lensFacing = when {
-                hasBackCamera() -> CameraSelector.LENS_FACING_BACK
-                hasFrontCamera() -> CameraSelector.LENS_FACING_FRONT
-                else -> throw IllegalStateException("Back and front camera are unavailable")
+            // Select check for available camera if no camera found exit the fragment
+            when {
+                hasBackCamera() -> {
+                    Log.d(TAG, "Front camera is available")
+                }
+                hasFrontCamera() -> {
+                    Log.d(TAG, "Back camera is available")
+                }
+                else -> {
+                    Log.e(TAG, "Back and front camera are unavailable")
+                    requireActivity().supportFragmentManager.popBackStackImmediate()
+                }
             }
 
             // Enable or disable switching between cameras
@@ -246,7 +272,7 @@ class CameraFragment : Fragment() {
 
         //Create a CameraSelector object and select DEFAULT_BACK_CAMERA.
         mCameraSelector = CameraSelector.Builder()
-            .requireLensFacing(lensFacing).build()
+            .requireLensFacing(viewModel.lensFacing.value!!).build()
 
         // Preview
         /*
@@ -611,11 +637,12 @@ class CameraFragment : Fragment() {
         }
 
         cameraSwitch.setOnClickListener {
-            lensFacing = if (CameraSelector.LENS_FACING_FRONT == lensFacing) {
-                CameraSelector.LENS_FACING_BACK
-            } else {
-                CameraSelector.LENS_FACING_FRONT
-            }
+            viewModel.lensFacing.value =
+                if (CameraSelector.LENS_FACING_FRONT == viewModel.lensFacing.value) {
+                    CameraSelector.LENS_FACING_BACK
+                } else {
+                    CameraSelector.LENS_FACING_FRONT
+                }
             // Re-bind use cases to update selected camera
             bindCameraUseCases()
         }
@@ -729,9 +756,14 @@ class CameraFragment : Fragment() {
         //pass mutable bitmap to canvas for drawing
         val canvas = Canvas(mutableBitmap)
         //print date time from location
-        canvas.drawText(simpleDateFormat.format(mLocationTime), 10f, mutableBitmap.height - 10f, mPaint)
+        canvas.drawText(
+            simpleDateFormat.format(mLocationTime),
+            10f,
+            mutableBitmap.height - 10f,
+            mPaint
+        )
         //print latitude an longitude
-        canvas.drawText("$mLatitude - $mLongitude", 10f, mutableBitmap.height -60f, mPaint)
+        canvas.drawText("$mLatitude - $mLongitude", 10f, mutableBitmap.height - 60f, mPaint)
 
         FileOutputStream(file).also {
             mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
@@ -742,6 +774,8 @@ class CameraFragment : Fragment() {
     }
 
     private fun enableLocationProvider() {
+        viewModel.isLoading.value = true
+
         mSettingsClient = LocationServices.getSettingsClient(requireContext())
         val task: Task<LocationSettingsResponse> =
             mSettingsClient.checkLocationSettings(
@@ -751,9 +785,13 @@ class CameraFragment : Fragment() {
             )
         task.addOnSuccessListener {
             // All location settings are satisfied. The client can initialize
+            viewModel.isLoading.value = false
+
             createLocationRequest()
         }
         task.addOnFailureListener { exception ->
+            viewModel.isLoading.value = false
+
             if (exception is ResolvableApiException) {
                 // Location settings are not satisfied, but this can be fixed
                 // by showing the user a dialog.
@@ -787,6 +825,7 @@ class CameraFragment : Fragment() {
     @SuppressLint("MissingPermission")
     private fun createLocationRequest() {
         Log.d(TAG, "createLocationRequest")
+        viewModel.isLoading.value = true
         //location callback
         locationUpdateCallback()
         //create an instance of the Fused Location Provider Client
@@ -803,8 +842,8 @@ class CameraFragment : Fragment() {
     setup location callback
     location update callback is required if you want continues location update
      */
-    private fun locationUpdateCallback(){
-        mLocationCallback = object : LocationCallback(){
+    private fun locationUpdateCallback() {
+        mLocationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult?) {
                 super.onLocationResult(locationResult)
                 locationResult ?: return
@@ -814,6 +853,7 @@ class CameraFragment : Fragment() {
                     mLatitude = location.latitude
                     mLongitude = location.latitude
                     mLocationTime = location.time
+                    viewModel.isLoading.postValue(false)
                 }
             }
         }
@@ -837,6 +877,10 @@ class CameraFragment : Fragment() {
 
     override fun onStart() {
         super.onStart()
+    }
+
+    override fun onResume() {
+        super.onResume()
         when {
             checkIfAllPermissionGranted(requireContext(), REQUIRED_PERMISSIONS) -> {
                 // Wait for the views to be properly laid out
@@ -863,7 +907,7 @@ class CameraFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
-        Log.d(TAG,"onPause")
+        Log.d(TAG, "onPause")
         //stop location update
         stopLocationUpdate()
     }
