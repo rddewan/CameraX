@@ -1,18 +1,22 @@
 package com.richarddewan.camerax.ui
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.*
 import android.graphics.drawable.ColorDrawable
 import android.hardware.Camera
 import android.hardware.display.DisplayManager
+import android.location.LocationManager
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
@@ -37,6 +41,9 @@ import androidx.lifecycle.lifecycleScope
 import com.afollestad.materialdialogs.MaterialDialog
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.*
+import com.google.android.gms.tasks.Task
 import com.google.android.material.snackbar.Snackbar
 import com.google.common.util.concurrent.ListenableFuture
 import com.richarddewan.camerax.R
@@ -44,6 +51,9 @@ import com.richarddewan.camerax.databinding.FragmentCameraBinding
 import com.richarddewan.camerax.util.ANIMATION_FAST_MILLIS
 import com.richarddewan.camerax.util.ANIMATION_SLOW_MILLIS
 import com.richarddewan.camerax.util.EXTENSION_WHITELIST
+import com.richarddewan.camerax.util.PermissionUtils
+import com.richarddewan.camerax.util.PermissionUtils.checkIfAllPermissionGranted
+import com.richarddewan.camerax.util.PermissionUtils.isLocationEnabled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
@@ -66,14 +76,20 @@ class CameraFragment : Fragment() {
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private const val TIME_STAMP_FORMAT = "dd/MM/yyyy HH:mm:ss"
         private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+        private const val REQUEST_CHECK_SETTINGS = 11
+        private const val INTERVAL = 1000 * 10
+        private const val FASTEST_INTERVAL = 1000 * 1
+        private const val DISPLACEMENT = 10f
+        private val REQUIRED_PERMISSIONS = arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
     }
-
 
     private lateinit var binding: FragmentCameraBinding
     ///Blocking camera operations are performed using this executor
     private lateinit var mCameraExecutor: ExecutorService
-
     private lateinit var viewFinder: PreviewView
     private lateinit var container: ConstraintLayout
     private var preview: Preview? = null
@@ -101,6 +117,14 @@ class CameraFragment : Fragment() {
     private lateinit var mPaint: Paint
     private lateinit var simpleDateFormat: SimpleDateFormat
 
+    private lateinit var mLocationRequest: LocationRequest
+    private lateinit var mSettingsClient: SettingsClient
+    private lateinit var mFusedLocationClient: FusedLocationProviderClient
+    private lateinit var mLocationCallback: LocationCallback
+    private var mLatitude: Double = 0.0
+    private var mLongitude: Double = 0.0
+    private var mLocationTime: Long = 0L
+
     private val displayManager by lazy {
         requireContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     }
@@ -111,7 +135,7 @@ class CameraFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View? {
         // Inflate the layout for this fragment
-        binding = DataBindingUtil.inflate(inflater, R.layout.fragment_camera,container,false)
+        binding = DataBindingUtil.inflate(inflater, R.layout.fragment_camera, container, false)
         return binding.root
     }
 
@@ -129,35 +153,19 @@ class CameraFragment : Fragment() {
         mPaint = Paint().apply {
             flags = Paint.ANTI_ALIAS_FLAG and Paint.FILTER_BITMAP_FLAG
             textSize = 48f
-            color = ContextCompat.getColor(requireContext(),R.color.material_white)
+            color = ContextCompat.getColor(requireContext(), R.color.material_white)
             style = Paint.Style.FILL
         }
 
         simpleDateFormat = SimpleDateFormat(TIME_STAMP_FORMAT, Locale.US)
 
-
-        if (checkIfAllPermissionGranted()) {
-            // Wait for the views to be properly laid out
-            viewFinder.post {
-                // Keep track of the display in which this view is attached
-                displayId = viewFinder.display.displayId
-
-                // Build UI controls
-                updateCameraUi()
-
-                // Set up the camera and its use cases
-                setUpCamera()
-            }
-
-        } else {
-            requestPermissions()
-        }
-
+        //location request
+        setupLocationRequest()
 
     }
 
-    private fun setUpCamera(){
-        Log.d(TAG,"setUpCamera")
+    private fun setUpCamera() {
+        Log.d(TAG, "setUpCamera")
         // Create a Builder same as in normal workflow.
         mImageCaptureBuilder = ImageCapture.Builder()
 
@@ -224,7 +232,7 @@ class CameraFragment : Fragment() {
      * Declare and bind preview, capture use cases
      * */
     private fun bindCameraUseCases() {
-        Log.d(TAG,"bindCameraUseCases")
+        Log.d(TAG, "bindCameraUseCases")
 
         // Get screen metrics used to setup camera for full screen resolution
         val metrics = DisplayMetrics().also { viewFinder.display.getRealMetrics(it) }
@@ -271,8 +279,7 @@ class CameraFragment : Fragment() {
                     .setTargetRotation(rotation)
                 setFlashMode(mFlashMode)
             }.build()
-        }
-        else {
+        } else {
 
             mImageCapture = ImageCapture.Builder().apply {
                 setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
@@ -300,7 +307,8 @@ class CameraFragment : Fragment() {
 
             // Bind use cases to camera
             mProcessCameraProvider.bindToLifecycle(
-                viewLifecycleOwner, mCameraSelector, preview, mImageCapture)
+                viewLifecycleOwner, mCameraSelector, preview, mImageCapture
+            )
 
         }
         //There are a few ways this code could fail, like if the app is no longer in focus. Wrap this code in a catch block to log if there's a failure.
@@ -321,9 +329,11 @@ class CameraFragment : Fragment() {
             return
         } else {
             // create a file to hold the image. Add in a time stamp so the file name will be unique.
-            val photoFile = File(outputDirectory,
+            val photoFile = File(
+                outputDirectory,
                 SimpleDateFormat(FILENAME_FORMAT, Locale.US)
-                .format(System.currentTimeMillis()) + ".jpg")
+                    .format(System.currentTimeMillis()) + ".jpg"
+            )
 
             /*
             Create an OutputFileOptions object.
@@ -334,7 +344,7 @@ class CameraFragment : Fragment() {
 
             // Set up image capture listener, which is triggered after photo has been taken
             mImageCapture.takePicture(
-                outputOptions,mCameraExecutor,object: ImageCapture.OnImageSavedCallback {
+                outputOptions, mCameraExecutor, object : ImageCapture.OnImageSavedCallback {
                     override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
 
                         val savedUri = outputFileResults.savedUri ?: Uri.fromFile(photoFile)
@@ -394,7 +404,7 @@ class CameraFragment : Fragment() {
     /* Method used to re-draw the camera UI controls,
      * called every time configuration changes.
     */
-    private fun updateCameraUi(){
+    private fun updateCameraUi() {
 
         binding.imageCapture.setOnClickListener {
             takePhoto()
@@ -405,7 +415,7 @@ class CameraFragment : Fragment() {
             if (true == outputDirectory.listFiles()?.isNotEmpty()) {
                 val fragment = GalleryFragment.newInstance(outputDirectory)
                 requireActivity().supportFragmentManager.beginTransaction()
-                    .add(android.R.id.content,fragment)
+                    .add(android.R.id.content, fragment)
                     .addToBackStack("MAIN")
                     .commit()
             }
@@ -445,13 +455,13 @@ class CameraFragment : Fragment() {
      *  @return suitable aspect ratio
      */
     private fun aspectRatio(width: Int, height: Int): Int {
-        val previewRatio = max(width,height).toDouble() / min(width,height).toDouble()
+        val previewRatio = max(width, height).toDouble() / min(width, height).toDouble()
 
         if (abs(previewRatio - RATIO_4_3_VALUE) <= abs(previewRatio - RATIO_16_9_VALUE)) {
-            return  AspectRatio.RATIO_4_3
+            return AspectRatio.RATIO_4_3
         }
 
-        return  AspectRatio.RATIO_16_9
+        return AspectRatio.RATIO_16_9
     }
 
     /*
@@ -473,7 +483,8 @@ class CameraFragment : Fragment() {
     }
 
     private fun requestPermissions() {
-        ActivityCompat.requestPermissions(requireActivity(),
+        ActivityCompat.requestPermissions(
+            requireActivity(),
             REQUIRED_PERMISSIONS,
             REQUEST_CODE_PERMISSIONS
         )
@@ -490,9 +501,6 @@ class CameraFragment : Fragment() {
 
     }
 
-    private fun checkIfAllPermissionGranted() = REQUIRED_PERMISSIONS.all {
-        ContextCompat.checkSelfPermission(requireContext(), it) == PackageManager.PERMISSION_GRANTED
-    }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -502,9 +510,18 @@ class CameraFragment : Fragment() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
-            if (checkIfAllPermissionGranted()) {
-                //do something
-                setUpCamera()
+            if (checkIfAllPermissionGranted(requireContext(), REQUIRED_PERMISSIONS)) {
+                // Wait for the views to be properly laid out
+                viewFinder.post {
+                    // Keep track of the display in which this view is attached
+                    displayId = viewFinder.display.displayId
+
+                    // Build UI controls
+                    updateCameraUi()
+
+                    // Set up the camera and its use cases
+                    setUpCamera()
+                }
             } else {
                 try {
                     Snackbar.make(
@@ -512,7 +529,8 @@ class CameraFragment : Fragment() {
                         getString(R.string.camera_permission_denied),
                         Snackbar.LENGTH_INDEFINITE
                     ).apply {
-                        setBackgroundTint(ContextCompat.getColor(context, R.color.material_red)
+                        setBackgroundTint(
+                            ContextCompat.getColor(context, R.color.material_red)
                         )
                         setTextColor(
                             ContextCompat.getColor(context, R.color.material_white)
@@ -524,9 +542,8 @@ class CameraFragment : Fragment() {
                             requestPermissions()
                         }
                     }.show()
-                }
-                catch (e:  Exception){
-                    Log.e(TAG,e.toString())
+                } catch (e: Exception) {
+                    Log.e(TAG, e.toString())
                 }
 
             }
@@ -543,7 +560,7 @@ class CameraFragment : Fragment() {
             positiveButton(R.string.dialog_ok) {
                 it.dismiss()
                 startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.fromParts("package",requireActivity().packageName, null)
+                    data = Uri.fromParts("package", requireActivity().packageName, null)
                 })
             }
         }
@@ -552,7 +569,7 @@ class CameraFragment : Fragment() {
 
     private fun getOutputDirectory(): File {
         val mediaDir = requireActivity().externalMediaDirs.firstOrNull()?.let {
-            File(it,resources.getString(R.string.app_name)).apply {
+            File(it, resources.getString(R.string.app_name)).apply {
                 mkdir()
             }
         }
@@ -560,27 +577,36 @@ class CameraFragment : Fragment() {
         return if (mediaDir != null && mediaDir.exists()) mediaDir else requireActivity().filesDir
     }
 
-    private fun updateFlashMode(){
+    private fun updateFlashMode() {
         binding.flashView.setOnClickListener {
             if (mFlashMode == ImageCapture.FLASH_MODE_ON) {
                 mFlashMode = ImageCapture.FLASH_MODE_OFF
-                binding.flashView.setImageDrawable(ContextCompat.getDrawable(requireContext(),R.drawable.ic_action_flash_off))
+                binding.flashView.setImageDrawable(
+                    ContextCompat.getDrawable(
+                        requireContext(),
+                        R.drawable.ic_action_flash_off
+                    )
+                )
                 mImageCapture.flashMode = mFlashMode
-            }
-            else {
+            } else {
                 mFlashMode = ImageCapture.FLASH_MODE_ON
-                binding.flashView.setImageDrawable(ContextCompat.getDrawable(requireContext(),R.drawable.ic_action_flash_on))
+                binding.flashView.setImageDrawable(
+                    ContextCompat.getDrawable(
+                        requireContext(),
+                        R.drawable.ic_action_flash_on
+                    )
+                )
                 mImageCapture.flashMode = mFlashMode
             }
         }
     }
 
-    private fun updateCameraSwitchButton(){
+    private fun updateCameraSwitchButton() {
         val cameraSwitch = binding.switchCameraView
 
         try {
             cameraSwitch.isEnabled = hasBackCamera() && hasFrontCamera()
-        }catch (e: CameraInfoUnavailableException){
+        } catch (e: CameraInfoUnavailableException) {
             cameraSwitch.isEnabled = false
         }
 
@@ -605,8 +631,8 @@ class CameraFragment : Fragment() {
         return mProcessCameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
     }
 
-    private fun enableBokehImageCaptureExtender(){
-        isBokehImage = if (mBokehImage.isExtensionAvailable(mCameraSelector)){
+    private fun enableBokehImageCaptureExtender() {
+        isBokehImage = if (mBokehImage.isExtensionAvailable(mCameraSelector)) {
             mBokehImage.enableExtension(mCameraSelector)
             true
         } else {
@@ -616,8 +642,8 @@ class CameraFragment : Fragment() {
         bindCameraUseCases()
     }
 
-    private fun enableHdrImageCaptureExtender(){
-        isHdrImage = if (mHdrImage.isExtensionAvailable(mCameraSelector)){
+    private fun enableHdrImageCaptureExtender() {
+        isHdrImage = if (mHdrImage.isExtensionAvailable(mCameraSelector)) {
             mHdrImage.enableExtension(mCameraSelector)
             true
         } else {
@@ -627,9 +653,9 @@ class CameraFragment : Fragment() {
         bindCameraUseCases()
     }
 
-    private fun enableNightImageCaptureExtender(){
+    private fun enableNightImageCaptureExtender() {
 
-        isNightImage = if (mNightImage.isExtensionAvailable(mCameraSelector)){
+        isNightImage = if (mNightImage.isExtensionAvailable(mCameraSelector)) {
             mNightImage.enableExtension(mCameraSelector)
             true
         } else {
@@ -639,9 +665,9 @@ class CameraFragment : Fragment() {
         bindCameraUseCases()
     }
 
-    private fun enableBeautyImageCaptureExtender(){
+    private fun enableBeautyImageCaptureExtender() {
 
-        isBeautyImage = if (mBeautyImage.isExtensionAvailable(mCameraSelector)){
+        isBeautyImage = if (mBeautyImage.isExtensionAvailable(mCameraSelector)) {
             mBeautyImage.enableExtension(mCameraSelector)
             true
         } else {
@@ -662,7 +688,7 @@ class CameraFragment : Fragment() {
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        Log.d(TAG,"onConfigurationChanged")
+        Log.d(TAG, "onConfigurationChanged")
 
         // Redraw the camera UI controls
         updateCameraUi()
@@ -684,7 +710,7 @@ class CameraFragment : Fragment() {
 
         override fun onDisplayChanged(displayId: Int) {
             if (displayId == this@CameraFragment.displayId) {
-                Log.d(TAG,"Rotation changed: ${requireView().display.rotation}")
+                Log.d(TAG, "Rotation changed: ${requireView().display.rotation}")
                 mImageCapture.targetRotation = requireView().display.rotation
             }
         }
@@ -694,23 +720,152 @@ class CameraFragment : Fragment() {
     /*
     draw time stamp on photo
      */
-    private fun drawOnBitmap(file: File){
-        val now = Date()
+    private fun drawOnBitmap(file: File) {
         //create a bitmap from file
         val bitmap = BitmapFactory.decodeFile(file.path)
         //create a mutable bitmap
-        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888,true)
+        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
 
         //pass mutable bitmap to canvas for drawing
         val canvas = Canvas(mutableBitmap)
-        canvas.drawText(simpleDateFormat.format(now),10f,mutableBitmap.height - 10f,mPaint)
+        //print date time from location
+        canvas.drawText(simpleDateFormat.format(mLocationTime), 10f, mutableBitmap.height - 10f, mPaint)
+        //print latitude an longitude
+        canvas.drawText("$mLatitude - $mLongitude", 10f, mutableBitmap.height -60f, mPaint)
 
         FileOutputStream(file).also {
-            mutableBitmap.compress(Bitmap.CompressFormat.JPEG,100,it)
+            mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
             it.flush()
             it.close()
         }
 
+    }
+
+    private fun enableLocationProvider() {
+        mSettingsClient = LocationServices.getSettingsClient(requireContext())
+        val task: Task<LocationSettingsResponse> =
+            mSettingsClient.checkLocationSettings(
+                LocationSettingsRequest.Builder()
+                    .addLocationRequest(mLocationRequest)
+                    .build()
+            )
+        task.addOnSuccessListener {
+            // All location settings are satisfied. The client can initialize
+            createLocationRequest()
+        }
+        task.addOnFailureListener { exception ->
+            if (exception is ResolvableApiException) {
+                // Location settings are not satisfied, but this can be fixed
+                // by showing the user a dialog.
+                try {
+                    // Show the dialog by calling startResolutionForResult(),
+                    // and check the result in onActivityResult().
+                    exception.startResolutionForResult(
+                        requireActivity(),
+                        REQUEST_CHECK_SETTINGS
+                    )
+                } catch (sendEx: IntentSender.SendIntentException) {
+                    // Ignore the error.
+                    Log.d(TAG, sendEx.message.toString())
+                }
+            }
+        }
+    }
+
+    /*
+    setup location request
+     */
+    private fun setupLocationRequest() {
+        mLocationRequest = LocationRequest.create().apply {
+            interval = INTERVAL.toLong()
+            fastestInterval = FASTEST_INTERVAL.toLong()
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+            smallestDisplacement = DISPLACEMENT
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun createLocationRequest() {
+        Log.d(TAG, "createLocationRequest")
+        //location callback
+        locationUpdateCallback()
+        //create an instance of the Fused Location Provider Client
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(requireContext())
+
+        mFusedLocationClient.requestLocationUpdates(
+            mLocationRequest,
+            mLocationCallback,
+            Looper.getMainLooper()
+        )
+    }
+
+    /*
+    setup location callback
+    location update callback is required if you want continues location update
+     */
+    private fun locationUpdateCallback(){
+        mLocationCallback = object : LocationCallback(){
+            override fun onLocationResult(locationResult: LocationResult?) {
+                super.onLocationResult(locationResult)
+                locationResult ?: return
+
+                for (location in locationResult.locations) {
+                    Log.d(TAG, location.toString())
+                    mLatitude = location.latitude
+                    mLongitude = location.latitude
+                    mLocationTime = location.time
+                }
+            }
+        }
+    }
+
+    /*
+    Stop location updates
+    Consider whether you want to stop the location updates when the activity is no longer in focus,
+    such as when the user switches to another app or to a different activity in the same app.
+    This can be handy to reduce power consumption,
+    provided the app doesn't need to collect information even when it's running in the background.
+     */
+    private fun stopLocationUpdate() {
+        Log.d(TAG, "stopLocationUpdate")
+        if (this::mFusedLocationClient.isInitialized) {
+            if (this::mLocationCallback.isInitialized) {
+                mFusedLocationClient.removeLocationUpdates(mLocationCallback)
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        when {
+            checkIfAllPermissionGranted(requireContext(), REQUIRED_PERMISSIONS) -> {
+                // Wait for the views to be properly laid out
+                viewFinder.post {
+                    // Keep track of the display in which this view is attached
+                    displayId = viewFinder.display.displayId
+                    // Build UI controls
+                    updateCameraUi()
+                    // Set up the camera and its use cases
+                    setUpCamera()
+                }
+
+                if (!isLocationEnabled(requireContext())) {
+                    enableLocationProvider()
+                } else {
+                    createLocationRequest()
+                }
+            }
+            else -> {
+                requestPermissions()
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG,"onPause")
+        //stop location update
+        stopLocationUpdate()
     }
 
     override fun onDestroyView() {
@@ -718,6 +873,7 @@ class CameraFragment : Fragment() {
         // Unregister the listeners
         displayManager.unregisterDisplayListener(displayListener)
     }
+
     override fun onDestroy() {
         super.onDestroy()
         // Shut down our background executor

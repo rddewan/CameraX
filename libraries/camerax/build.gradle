@@ -83,11 +83,14 @@ dependencies {
     implementation "com.afollestad.material-dialogs:core:$material_dialogs_core"
 
     //kotlinx-coroutines-android
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.8'
-    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.3.0-alpha07"
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.9'
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.3.0-beta01"
 
     //https://github.com/davemorrissey/subsampling-scale-image-view
     implementation 'com.davemorrissey.labs:subsampling-scale-image-view-androidx:3.10.0'
+
+    //location service
+    implementation 'com.google.android.gms:play-services-location:17.1.0'
 
 
     testImplementation 'junit:junit:4.13'
