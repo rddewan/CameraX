@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base application theme. -->
-    <style name="CameraTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="CameraTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
@@ -9,5 +9,21 @@
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowTranslucentStatus">true</item>
         <item name="android:windowTranslucentNavigation">true</item>
+    </style>
+
+    <style name="CameraTheme.AlertDialogStyle" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
+        <item name="dialogCornerRadius">16dp</item>
+        <item name="android:textColorPrimary">@color/material_white</item>
+        <item name="colorAccent">@color/material_white</item>
+        <item name="android:background">@color/material_brown</item>
+        <item name="buttonBarPositiveButtonStyle">@style/MaterialButton.Dialog</item>
+        <item name="buttonBarNegativeButtonStyle">@style/MaterialButton.Dialog</item>
+    </style>
+
+    <style name="MaterialButton.Dialog" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+        <item name="fontFamily">serif</item>
+        <item name="android:textColor">@color/material_white</item>
+        <item name="rippleColor">#E91E63</item>
+        <item name="android:padding">8dp</item>
     </style>
 </resources>

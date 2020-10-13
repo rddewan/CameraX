@@ -25,7 +25,7 @@
             android:id="@+id/imageCapture"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="40dp"
             android:background="@drawable/outer_circle"
             android:tint="@color/material_white"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -102,6 +102,17 @@
             app:layout_constraintStart_toStartOf="@+id/switch_camera_view"
             app:layout_constraintTop_toBottomOf="@+id/hdri_view"
             app:srcCompat="@drawable/ic_night" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/beauty_view"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/outer_circle"
+            android:padding="@dimen/spacing_small"
+            app:layout_constraintStart_toStartOf="@+id/switch_camera_view"
+            app:layout_constraintTop_toBottomOf="@+id/night_view"
+            app:srcCompat="@drawable/ic_beauty_face" />
 
         <ProgressBar
             android:id="@+id/pb_loading"

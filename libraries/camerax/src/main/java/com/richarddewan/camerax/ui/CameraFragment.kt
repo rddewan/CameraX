@@ -459,6 +459,10 @@ class CameraFragment : Fragment() {
             enableNightImageCaptureExtender()
         }
 
+        binding.beautyView.setOnClickListener {
+            enableBeautyImageCaptureExtender()
+        }
+
         // In the background, load latest photo taken (if any) for gallery thumbnail
         lifecycleScope.launch(Dispatchers.IO) {
             outputDirectory.listFiles { file ->
@@ -526,7 +530,6 @@ class CameraFragment : Fragment() {
 
 
     }
-
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -763,7 +766,7 @@ class CameraFragment : Fragment() {
             mPaint
         )
         //print latitude an longitude
-        canvas.drawText("$mLatitude - $mLongitude", 10f, mutableBitmap.height - 60f, mPaint)
+        canvas.drawText("$mLatitude - $mLongitude", 10f, mutableBitmap.height - 70f, mPaint)
 
         FileOutputStream(file).also {
             mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)

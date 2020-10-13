@@ -18,7 +18,10 @@
 
     <application
         android:theme="@style/CameraTheme">
-        <activity android:name=".ui.MainActivityHolder"></activity>
+
+        <activity
+            android:name=".ui.MainActivityHolder"
+            android:theme="@style/CameraTheme" />
 
         <!-- FileProvider used to share photos with other apps -->
 

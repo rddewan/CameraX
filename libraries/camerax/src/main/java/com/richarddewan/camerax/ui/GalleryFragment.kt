@@ -93,7 +93,7 @@ class GalleryFragment : Fragment() {
 
             mediaList.getOrNull(viewPager2.currentItem)?.let { mediaFile ->
 
-                AlertDialog.Builder(view.context, android.R.style.Theme_Material_Dialog)
+                AlertDialog.Builder(view.context, R.style.CameraTheme_AlertDialogStyle)
                     .setTitle(getString(R.string.delete_title))
                     .setMessage(getString(R.string.delete_dialog))
                     .setIcon(android.R.drawable.ic_dialog_alert)
@@ -116,7 +116,6 @@ class GalleryFragment : Fragment() {
                         }
 
                     }
-
                     .setNegativeButton(android.R.string.no, null)
                     .create().showImmersive()
             }
