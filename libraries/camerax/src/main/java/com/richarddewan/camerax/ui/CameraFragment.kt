@@ -356,8 +356,7 @@ class CameraFragment : Fragment() {
         } else {
             // create a file to hold the image. Add in a time stamp so the file name will be unique.
             val photoFile = File(
-                outputDirectory,
-                SimpleDateFormat(FILENAME_FORMAT, Locale.US)
+                outputDirectory, SimpleDateFormat(FILENAME_FORMAT, Locale.US)
                     .format(System.currentTimeMillis()) + ".jpg"
             )
 
@@ -392,8 +391,8 @@ class CameraFragment : Fragment() {
                             )
                         }
 
-                        // If the folder selected is an external media directory, this is
-                        // unnecessary but otherwise other apps will not be able to access our
+                        // If the folder selected is an external media directory,this is unnecessary
+                        // but otherwise other apps will not be able to access our
                         // images unless we scan them using [MediaScannerConnection]
                         val mimeType = MimeTypeMap.getSingleton()
                             .getMimeTypeFromExtension(savedUri.toFile().extension)
@@ -439,7 +438,7 @@ class CameraFragment : Fragment() {
         binding.photoView.setOnClickListener {
             // Only navigate when the gallery has photos
             if (true == outputDirectory.listFiles()?.isNotEmpty()) {
-                val fragment = GalleryFragment.newInstance(outputDirectory)
+                val fragment = GalleryFragment.newInstance(outputDirectory,null)
                 requireActivity().supportFragmentManager.beginTransaction()
                     .add(android.R.id.content, fragment)
                     .addToBackStack("MAIN")
@@ -567,7 +566,7 @@ class CameraFragment : Fragment() {
                         setActionTextColor(
                             ContextCompat.getColor(context, R.color.material_white)
                         )
-                        setAction(getString(R.string.dialog_close)) { snackBar ->
+                        setAction(getString(R.string.dialog_close)) { _ ->
                             requestPermissions()
                         }
                     }.show()
@@ -602,7 +601,6 @@ class CameraFragment : Fragment() {
                 mkdir()
             }
         }
-
         return if (mediaDir != null && mediaDir.exists()) mediaDir else requireActivity().filesDir
     }
 
@@ -876,10 +874,6 @@ class CameraFragment : Fragment() {
                 mFusedLocationClient.removeLocationUpdates(mLocationCallback)
             }
         }
-    }
-
-    override fun onStart() {
-        super.onStart()
     }
 
     override fun onResume() {
