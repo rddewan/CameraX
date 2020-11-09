@@ -6,6 +6,7 @@
 - Switch Camera
 - Canvas - Draw Time Stamp / Location 
 - ViewPager2 - Gallery
+- subsampling-scale-image-view (Zoom Image)
 
 
 # Extender
