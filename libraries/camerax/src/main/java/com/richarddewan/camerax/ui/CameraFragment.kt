@@ -26,6 +26,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import androidx.camera.core.*
+import androidx.camera.core.impl.utils.Exif
 import androidx.camera.extensions.BeautyImageCaptureExtender
 import androidx.camera.extensions.BokehImageCaptureExtender
 import androidx.camera.extensions.HdrImageCaptureExtender
@@ -37,6 +38,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toFile
 import androidx.databinding.DataBindingUtil
+import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.afollestad.materialdialogs.MaterialDialog
@@ -66,6 +68,7 @@ import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 
 class CameraFragment : Fragment() {
@@ -375,7 +378,10 @@ class CameraFragment : Fragment() {
                         val savedUri = outputFileResults.savedUri ?: Uri.fromFile(photoFile)
                         Log.d(TAG, "Photo capture succeeded: $savedUri")
 
-                        drawOnBitmap(photoFile)
+                        val exif = Exif.createFromFile(photoFile)
+                        val rotation = exif.rotation
+
+                        drawOnBitmap(photoFile, rotation)
 
                         // We can only change the foreground Drawable using API level 23+ API
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -438,7 +444,7 @@ class CameraFragment : Fragment() {
         binding.photoView.setOnClickListener {
             // Only navigate when the gallery has photos
             if (true == outputDirectory.listFiles()?.isNotEmpty()) {
-                val fragment = GalleryFragment.newInstance(outputDirectory,null)
+                val fragment = GalleryFragment.newInstance(outputDirectory, null)
                 requireActivity().supportFragmentManager.beginTransaction()
                     .add(android.R.id.content, fragment)
                     .addToBackStack("MAIN")
@@ -748,11 +754,28 @@ class CameraFragment : Fragment() {
     /*
     draw time stamp on photo
      */
-    private fun drawOnBitmap(file: File) {
+    private fun drawOnBitmap(file: File, degree: Int) {
         //create a bitmap from file
-        val bitmap = BitmapFactory.decodeFile(file.path)
+        val bitmapFromFile = BitmapFactory.decodeFile(file.path)
+
+        //create a scale down image of 1920 x 1080
+        val bitmap: Bitmap = when  {
+
+            bitmapFromFile.width > bitmapFromFile.height ->
+                Bitmap.createScaledBitmap(bitmapFromFile, 1920, 1080, true)
+
+            bitmapFromFile.height > bitmapFromFile.width ->
+                Bitmap.createScaledBitmap(bitmapFromFile, 1080, 1920, true)
+
+            else ->
+                Bitmap.createScaledBitmap(bitmapFromFile, 1920, 1080, true)
+        }
+
+        //rotate bitmap if required
+        val rotateBitmap = rotateImage(bitmap, degree)
+
         //create a mutable bitmap
-        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val mutableBitmap = rotateBitmap.copy(Bitmap.Config.ARGB_8888, true)
 
         //pass mutable bitmap to canvas for drawing
         val canvas = Canvas(mutableBitmap)
@@ -767,11 +790,24 @@ class CameraFragment : Fragment() {
         canvas.drawText("$mLatitude - $mLongitude", 10f, mutableBitmap.height - 70f, mPaint)
 
         FileOutputStream(file).also {
-            mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+            mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 65, it)
             it.flush()
             it.close()
         }
 
+    }
+
+
+    /*
+    fun to change the bitmap orientation and return bitmap
+     */
+    private fun rotateImage(bitmap: Bitmap, degree: Int): Bitmap {
+        val matrix = Matrix()
+        matrix.postRotate(degree.toFloat())
+
+        return Bitmap.createBitmap(
+            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+        )
     }
 
     private fun enableLocationProvider() {
